@@ -1,16 +1,16 @@
-# ShelfSeek
+# ShelfScry
 
-A book discovery app. Describe a plot or theme in plain English — ShelfSeek finds real matching books.
+A book discovery app. Describe a plot or theme in plain English — ShelfScry finds real matching books.
 
 ## Prerequisites
 
 - Node.js 18+
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com)
+- A Groq api skey
 
 ## Setup
 
 1. `npm install`
-2. Copy `.env.example` to `.env` and paste your Gemini API key
+2. Copy `.env.example` to `.env` and paste your Groq API key
 3. `npm run dev`
 4. Open `http://localhost:3000`
 
