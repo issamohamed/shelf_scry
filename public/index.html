@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shelf Scry</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-image: url('bookshelf.jpg');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      color: #f5f0e8;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    #app {
+      position: relative;
+      z-index: 1;
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 0 16px 40px;
+    }
+
+    /* App title */
+    #appTitle {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 64px;
+      font-weight: 700;
+      color: #ffffff;
+      text-align: center;
+      margin-bottom: 28px;
+      line-height: 1.1;
+      letter-spacing: -0.5px;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+
+    /* Empty state: search bar centered vertically */
+    #app.empty-state {
+      padding-top: 28vh;
+    }
+
+    /* Results state: search bar at top, title stays */
+    #app.results-state {
+      padding-top: 2rem;
+    }
+
+    /* Back button — hidden until results state */
+    #backBtn {
+      display: none;
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      width: 40px;
+      height: 40px;
+      background: #6d2e2e;
+      border: 1px solid #8f3c3c;
+      border-radius: 10px;
+      color: #f2e1e1;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: background 0.15s ease;
+      z-index: 100;
+    }
+
+    #backBtn:hover {
+      background: #8f3c3c;
+    }
+
+    #app.results-state ~ #backBtn,
+    body.results-active #backBtn {
+      display: flex;
+    }
+
+    /* Outer glass-morphism container — wraps search bar + Powered by Groq */
+    .search-outer {
+      width: 100%;
+      background: rgba(75, 31, 31, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(242, 225, 225, 0.1);
+      border-radius: 16px;
+      padding: 12px;
+    }
+
+    /* Inner search bar — maroon-800 bg + maroon-700 border */
+    .search-wrapper {
+      width: 100%;
+      background: #6d2e2e;
+      border: 1px solid #8f3c3c;
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -2px rgba(0,0,0,0.2);
+      overflow: hidden;
+      transition: border-color 0.15s ease;
+    }
+
+    .search-wrapper:focus-within {
+      border-color: #b14b4b;
+    }
+
+    .search-row {
+      position: relative;
+    }
+
+    .search-wrapper input {
+      width: 100%;
+      background: transparent;
+      color: #f2e1e1;
+      border: none;
+      padding: 12px 52px;
+      font-size: 17px;
+      outline: none;
+    }
+
+    .search-wrapper input::placeholder {
+      color: #cb8787;
+    }
+
+    .search-icon {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 20px;
+      height: 20px;
+      color: #d8a5a5;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s ease;
+    }
+
+    .search-icon:hover {
+      color: #f2e1e1;
+    }
+
+    .search-icon.mic {
+      left: 16px;
+    }
+
+    .search-icon.sparkle {
+      right: 16px;
+    }
+
+    /* Mic pulse animation when listening */
+    .search-wrapper.listening .mic {
+      color: rgba(220, 90, 90, 0.9);
+      animation: micPulse 1s ease-in-out infinite;
+    }
+
+    @keyframes micPulse {
+      0%, 100% { opacity: 0.6; transform: translateY(-50%) scale(1); }
+      50%       { opacity: 1;   transform: translateY(-50%) scale(1.2); }
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 0;
+      background: rgba(40, 10, 10, 0.92);
+      color: rgba(245, 240, 232, 0.85);
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 0.4s ease;
+    }
+
+    .tooltip.fade-out {
+      opacity: 0;
+    }
+
+    /* Results container */
+    #results {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Card */
+    .card {
+      background: rgba(110, 35, 35, 0.82);
+      border: 1px solid rgba(200, 90, 90, 0.3);
+      border-radius: 14px;
+      padding: 20px 24px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      animation: cardIn 0.3s ease both;
+    }
+
+    .card:hover {
+      background: rgba(130, 45, 45, 0.88);
+    }
+
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-title {
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0 0 4px;
+    }
+
+    .card-author {
+      color: rgba(245, 240, 232, 0.65);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    .card-synopsis {
+      color: rgba(245, 240, 232, 0.85);
+      font-size: 15px;
+      line-height: 1.65;
+      margin-top: 10px;
+    }
+
+    /* Skeleton cards */
+    .skeleton {
+      background: rgba(110, 35, 35, 0.82);
+      border: 1px solid rgba(200, 90, 90, 0.3);
+      border-radius: 14px;
+      padding: 20px 24px;
+    }
+
+    .skeleton-bar {
+      background: rgba(245, 240, 232, 0.08);
+      border-radius: 6px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    .skeleton-bar.title {
+      height: 20px;
+      width: 55%;
+      margin-bottom: 10px;
+    }
+
+    .skeleton-bar.body {
+      height: 14px;
+      width: 90%;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50%       { opacity: 0.75; }
+    }
+
+    /* Powered by Groq label */
+    #poweredBy {
+      font-size: 14px;
+      color: #d8a5a5;
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    /* Book of the Day card */
+    #botd {
+      margin-top: 20px;
+      background: rgba(75, 31, 31, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(242, 225, 225, 0.1);
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    #app.results-state #botd {
+      display: none;
+    }
+
+    .botd-label {
+      color: #ffffff;
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .botd-content {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .botd-cover {
+      width: 110px;
+      height: 155px;
+      object-fit: cover;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    .botd-title {
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .botd-author {
+      color: #d8a5a5;
+      font-size: 14px;
+      font-style: italic;
+      margin-bottom: 12px;
+    }
+
+    .botd-description {
+      color: #f2e1e1;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .botd-skeleton .botd-title {
+      background: rgba(245, 240, 232, 0.08);
+      border-radius: 6px;
+      height: 22px;
+      width: 60%;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    .botd-skeleton .botd-author {
+      background: rgba(245, 240, 232, 0.08);
+      border-radius: 6px;
+      height: 14px;
+      width: 35%;
+      margin-bottom: 14px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    .botd-skeleton .botd-description {
+      background: rgba(245, 240, 232, 0.08);
+      border-radius: 6px;
+      height: 80px;
+      width: 100%;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    /* Empty state message */
+    .empty-msg {
+      color: rgba(245, 240, 232, 0.6);
+      font-size: 15px;
+      text-align: center;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="empty-state">
+    <h1 id="appTitle">Shelf Scry</h1>
+    <div class="search-outer">
+    <div class="search-wrapper" id="searchWrapper">
+      <div class="search-row">
+        <!-- Mic icon -->
+        <span class="search-icon mic" id="micBtn" title="Voice input">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </span>
+
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Enter a plot or genre for book recommendations..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+
+        <!-- Sparkle / Surprise icon — Lucide Sparkles (exact match to original) -->
+        <span class="search-icon sparkle" id="sparkleBtn" title="Surprise me">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+            <path d="M5 3v4"/>
+            <path d="M19 17v4"/>
+            <path d="M3 5h4"/>
+            <path d="M17 19h4"/>
+          </svg>
+        </span>
+      </div>
+    </div>
+
+    <p id="poweredBy">Powered by Groq</p>
+    </div>
+
+    <div id="results"></div>
+
+    <!-- Book of the Day -->
+    <div id="botd">
+      <div class="botd-label">Book of the Day</div>
+      <div class="botd-content botd-skeleton">
+        <img src="red_book.jpg" alt="Book cover" class="botd-cover" />
+        <div class="botd-info">
+          <div class="botd-title"></div>
+          <div class="botd-author"></div>
+          <div class="botd-description"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Back button -->
+  <button id="backBtn" title="Back to home">Back</button>
+
+  <script>
+    const app = document.getElementById('app');
+    const searchWrapper = document.getElementById('searchWrapper');
+    const searchInput = document.getElementById('searchInput');
+    const sparkleBtn = document.getElementById('sparkleBtn');
+    const micBtn = document.getElementById('micBtn');
+    const resultsEl = document.getElementById('results');
+    const backBtn = document.getElementById('backBtn');
+
+    function enterResults() {
+      app.classList.remove('empty-state');
+      app.classList.add('results-state');
+      backBtn.style.display = 'flex';
+    }
+
+    function goHome() {
+      app.classList.remove('results-state');
+      app.classList.add('empty-state');
+      backBtn.style.display = 'none';
+      resultsEl.innerHTML = '';
+      searchInput.value = '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    backBtn.addEventListener('click', goHome);
+
+    function showSkeletons() {
+      resultsEl.innerHTML = '';
+      for (let i = 0; i < 3; i++) {
+        const sk = document.createElement('div');
+        sk.className = 'skeleton';
+        sk.innerHTML = `
+          <div class="skeleton-bar title"></div>
+          <div class="skeleton-bar body"></div>
+        `;
+        resultsEl.appendChild(sk);
+      }
+    }
+
+    function showEmpty() {
+      resultsEl.innerHTML = '<p class="empty-msg">No matches found. Try describing the plot in more detail.</p>';
+    }
+
+    function renderCards(books) {
+      resultsEl.innerHTML = '';
+      books.forEach((book, i) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.animationDelay = `${i * 60}ms`;
+        card.innerHTML = `
+          <div class="card-title">${esc(book.title)}</div>
+          <div class="card-author">by ${esc(book.author)}</div>
+          ${book.synopsis ? `<div class="card-synopsis">${esc(book.synopsis)}</div>` : ''}
+        `;
+        card.addEventListener('click', () => {
+          window.open(book.source_url, '_blank', 'noopener,noreferrer');
+        });
+        resultsEl.appendChild(card);
+      });
+    }
+
+    function esc(str) {
+      if (!str) return '';
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    async function doSearch() {
+      const query = searchInput.value.trim();
+      if (query.length < 3) return;
+
+      enterResults();
+      showSkeletons();
+
+      try {
+        const res = await fetch('/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.results) {
+          showEmpty();
+          return;
+        }
+
+        if (data.results.length === 0) {
+          showEmpty();
+        } else {
+          renderCards(data.results);
+        }
+      } catch {
+        showEmpty();
+      }
+    }
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    // Surprise button
+    async function doSurprise() {
+      enterResults();
+      showSkeletons();
+
+      try {
+        const res = await fetch('/surprise');
+        const data = await res.json();
+
+        if (!res.ok || !data.results) { showEmpty(); return; }
+        data.results.length === 0 ? showEmpty() : renderCards(data.results);
+      } catch {
+        showEmpty();
+      }
+    }
+
+    sparkleBtn.addEventListener('click', doSurprise);
+
+    // Voice input via Groq Whisper
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordingTimeout = null;
+
+    function showTooltip(msg) {
+      const existing = searchWrapper.querySelector('.tooltip');
+      if (existing) existing.remove();
+      const tip = document.createElement('div');
+      tip.className = 'tooltip';
+      tip.textContent = msg;
+      searchWrapper.appendChild(tip);
+      setTimeout(() => {
+        tip.classList.add('fade-out');
+        setTimeout(() => tip.remove(), 400);
+      }, 3000);
+    }
+
+    async function stopAndTranscribe() {
+      clearTimeout(recordingTimeout);
+      mediaRecorder.stop();
+    }
+
+    micBtn.addEventListener('click', async () => {
+      // Toggle off if already recording
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        stopAndTranscribe();
+        return;
+      }
+
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        showTooltip('Microphone access was denied');
+        return;
+      }
+
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      searchWrapper.classList.add('listening');
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const form = new FormData();
+        form.append('audio', blob, 'audio.webm');
+
+        try {
+          const res = await fetch('/transcribe', { method: 'POST', body: form });
+          const data = await res.json();
+          if (!res.ok || !data.transcript) throw new Error();
+          searchInput.value = data.transcript;
+          searchWrapper.classList.remove('listening');
+          doSearch();
+        } catch {
+          searchWrapper.classList.remove('listening');
+          showTooltip('Could not transcribe audio. Try again.');
+        }
+      };
+
+      mediaRecorder.start();
+      // Auto-stop after 8 seconds
+      recordingTimeout = setTimeout(() => stopAndTranscribe(), 8000);
+    });
+
+    // Book of the Day
+    const botdEl = document.getElementById('botd');
+
+    async function loadBookOfTheDay() {
+      try {
+        const res = await fetch('/book-of-the-day');
+        if (!res.ok) throw new Error();
+        const book = await res.json();
+
+        const content = botdEl.querySelector('.botd-content');
+        content.classList.remove('botd-skeleton');
+        content.querySelector('.botd-title').textContent = book.title || '';
+        content.querySelector('.botd-author').textContent = book.author ? `by ${book.author}` : '';
+        content.querySelector('.botd-description').textContent = book.description || '';
+      } catch {
+        botdEl.querySelector('.botd-content').classList.remove('botd-skeleton');
+        botdEl.querySelector('.botd-description').textContent = 'Could not load today\'s pick. Refresh to try again.';
+      }
+    }
+
+    loadBookOfTheDay();
+  </script>
+</body>
+</html>
